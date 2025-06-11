@@ -1,26 +1,63 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
+
+/* Variables de police */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --font-poppins: 'Poppins', ui-sans-serif, system-ui;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-gray-50 text-gray-900;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer components {
+  .nav-button {
+    @apply flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors text-gray-600 hover:bg-gray-50 hover:text-gray-900;
+  }
+  
+  .nav-button-active {
+    @apply bg-blue-50 text-blue-700 border-r-2 border-blue-700;
+  }
+  
+  .planning-card {
+    @apply bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow;
+  }
+  
+  .planning-time-slot {
+    @apply flex items-center justify-between p-3 border border-gray-200 rounded-lg;
+  }
+  
+  .planning-time-slot-occupied {
+    @apply bg-blue-50 border-blue-200;
+  }
+  
+  .planning-time-slot-free {
+    @apply bg-green-50 border-green-200;
+  }
+  
+  .form-section {
+    @apply space-y-4 p-6 bg-white rounded-lg border border-gray-200;
+  }
+  
+  .stats-card {
+    @apply bg-white p-6 rounded-lg shadow-sm border border-gray-200;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .text-poppins-light { font-family: 'Poppins', sans-serif; font-weight: 300; }
+  .text-poppins-regular { font-family: 'Poppins', sans-serif; font-weight: 400; }
+  .text-poppins-medium { font-family: 'Poppins', sans-serif; font-weight: 500; }
+  .text-poppins-semibold { font-family: 'Poppins', sans-serif; font-weight: 600; }
+  .text-poppins-bold { font-family: 'Poppins', sans-serif; font-weight: 700; }
 }
