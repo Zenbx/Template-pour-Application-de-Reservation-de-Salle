@@ -58,4 +58,19 @@ export const useUpdateFormation = () => {
       toast.error(error.response?.data?.message || 'Erreur lors de la mise à jour');
     },
   });
-};
+  };
+
+  export const useDeleteFormation = () => {
+    const queryClient = useQueryClient();
+    
+    return useMutation({
+      mutationFn: (id: number) => formationsService.delete(id),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['formations'] });
+        toast.success('Formation supprimé avec succès');
+      },
+      onError: (error: any) => {
+        toast.error(error.response?.data?.message || 'Erreur lors de la suppression');
+      },
+    });
+  };
