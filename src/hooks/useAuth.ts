@@ -55,7 +55,7 @@ export const useAuth = () => {
 
 
 // hooks/useAuth.ts
-import { useState } from 'react';
+/*import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { authService } from '@/lib/api';
 import { LoginRequest } from '@/types';
@@ -91,4 +91,19 @@ export const useAuth = () => {
     logout,
     isLoginLoading: loginMutation.isPending,
   };
-};
+};*/
+
+// hooks/useAuth.ts
+import { useContext } from 'react';
+import { AuthContext } from '@/contexts/AuthContext';
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+}
+
+// Export du contexte pour usage direct si nécessaire
+export { AuthContext } from '@/contexts/AuthContext';

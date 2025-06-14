@@ -2,17 +2,21 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { RecapHoraire, Semaine } from '@/types';
-import { useAuth } from '@/contexts/AuthContext';
-import { useReservations } from '@/hooks/useReservations';
+import { useAuth } from '@/hooks/useAuth';
+import { useReservationsByEnseignant } from '@/hooks/useReservations';
 import { generateSemaines, creneauxHoraires } from '@/lib/data';
+import { Semaine, RecapHoraire } from '@/types'
 import { calculateDuration, isDateInRange } from '@/lib/utils';
 
 export function useRecapHoraire() {
   const { user } = useAuth();
-  const { userReservations } = useReservations();
   const [selectedSemaine, setSelectedSemaine] = useState<Semaine | null>(null);
   const [semaines] = useState(() => generateSemaines(12));
+
+  // Récupérer les réservations de l'utilisateur connecté
+  const { data: userReservations = [], isLoading, error } = useReservationsByEnseignant(
+    user?.idEnseignant || 0
+  );
 
   // Sélectionner la semaine actuelle par défaut
   useEffect(() => {
@@ -23,12 +27,12 @@ export function useRecapHoraire() {
 
   // Calculer le récap pour la semaine sélectionnée
   const recapHoraire = useMemo((): RecapHoraire | null => {
-    if (!user || !selectedSemaine) return null;
+    if (!user || !selectedSemaine || !userReservations) return null;
 
     // Filtrer les réservations de la semaine
     const reservationsSemaine = userReservations.filter(res => 
       res.statut === 'CONFIRMEE' &&
-      isDateInRange(res.date, selectedSemaine.debut, selectedSemaine.fin)
+      isDateInRange(res.jour, selectedSemaine.debut, selectedSemaine.fin)
     );
 
     // Calculer les heures par jour
@@ -43,27 +47,40 @@ export function useRecapHoraire() {
     let totalHeures = 0;
 
     reservationsSemaine.forEach(res => {
-      if (res.type === 'SALLE' && res.creneauId) {
-        const creneau = creneauxHoraires.find(c => c.id === res.creneauId);
-        if (creneau) {
-          const duree = calculateDuration(creneau.heureDebut, creneau.heureFin);
-          heuresParJour[creneau.jour] += duree;
+      if (res.salle) {
+        const duree = calculateDuration(res.heureDebut, res.heureFin);
+        
+        // Convertir la date en jour de la semaine
+        const resDate = new Date(res.jour);
+        const jourSemaine = resDate.toLocaleDateString('fr-FR', { weekday: 'long' }).toUpperCase();
+        
+        // Mapper les jours français vers notre format
+        const jourMapping: { [key: string]: string } = {
+          'LUNDI': 'LUNDI',
+          'MARDI': 'MARDI',
+          'MERCREDI': 'MERCREDI',
+          'JEUDI': 'JEUDI',
+          'VENDREDI': 'VENDREDI'
+        };
+
+        const jour = jourMapping[jourSemaine];
+        if (jour && heuresParJour[jour] !== undefined) {
+          heuresParJour[jour] += duree;
           totalHeures += duree;
         }
       }
     });
 
-    // Simuler des cours (données de test)
+    // Générer la liste des cours
     const cours = reservationsSemaine
-      .filter(res => res.type === 'SALLE')
+      .filter(res => res.salle)
       .map(res => {
-        const creneau = creneauxHoraires.find(c => c.id === res.creneauId);
-        const duree = creneau ? calculateDuration(creneau.heureDebut, creneau.heureFin) : 2;
+        const duree = calculateDuration(res.heureDebut, res.heureFin);
         
         return {
           nom: res.motif,
           heures: duree,
-          salle: res.salleId || 'Non définie'
+          salle: res.salle?.codeSalle || 'Non définie'
         };
       });
 
@@ -79,21 +96,27 @@ export function useRecapHoraire() {
 
   // Calculer les statistiques globales
   const statsGlobales = useMemo(() => {
-    if (!user) return null;
+    if (!user || !userReservations) return null;
 
     const reservationsActives = userReservations.filter(res => res.statut === 'CONFIRMEE');
+    
+    // Réservations d'aujourd'hui
     const reservationsAujourdhui = reservationsActives.filter(res => {
       const today = new Date();
-      return res.date.toDateString() === today.toDateString();
+      const resDate = new Date(res.jour);
+      return resDate.toDateString() === today.toDateString();
     });
 
+    // Compter les salles uniques réservées
     const sallesReservees = new Set(
       reservationsActives
-        .filter(res => res.type === 'SALLE')
-        .map(res => res.salleId)
+        .filter(res => res.salle)
+        .map(res => res.salle?.codeSalle)
+        .filter(Boolean)
     ).size;
 
-    const materielEmprunte = reservationsActives.filter(res => res.type === 'MATERIEL').length;
+    // Compter le matériel emprunté
+    const materielEmprunte = reservationsActives.filter(res => res.materiel).length;
 
     return {
       reservationsAujourdhui: reservationsAujourdhui.length,
@@ -108,6 +131,8 @@ export function useRecapHoraire() {
     statsGlobales,
     semaines,
     selectedSemaine,
-    setSelectedSemaine
+    setSelectedSemaine,
+    isLoading,
+    error
   };
 }

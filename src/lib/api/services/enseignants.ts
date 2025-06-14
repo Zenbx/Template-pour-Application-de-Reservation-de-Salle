@@ -1,5 +1,5 @@
 // lib/api/services/enseignants.ts
-import { apiClient } from '../client';
+/*import { apiClient } from '../client';
 import { 
   Enseignant, 
   EnseignantDTO, 
@@ -37,4 +37,29 @@ export const enseignantsService = {
   // Récupérer les réservations d'un enseignant
   getReservations: (id: number): Promise<Reservation[]> =>
     apiClient.get(`/enseignants/${id}/reservations`),
+};*/
+
+import { apiClient } from '../client';
+import { 
+  EnseignantDTO, 
+  CreateEnseignantRequest, 
+  UpdateEnseignantRequest,
+  EnseignantFilters 
+} from '@/types';
+
+export const enseignantsService = {
+  getAll: (filters?: EnseignantFilters): Promise<EnseignantDTO[]> =>
+    apiClient.get('/enseignants', filters),
+
+  getById: (id: number): Promise<EnseignantDTO> =>
+    apiClient.get(`/enseignants/${id}`),
+
+  create: (data: CreateEnseignantRequest): Promise<EnseignantDTO> =>
+    apiClient.post('/enseignants', data),
+
+  update: (id: number, data: UpdateEnseignantRequest): Promise<EnseignantDTO> =>
+    apiClient.put(`/enseignants/${id}`, data),
+
+  delete: (id: number): Promise<void> =>
+    apiClient.delete(`/enseignants/${id}`),
 };

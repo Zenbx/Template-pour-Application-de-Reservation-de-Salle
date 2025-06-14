@@ -1,4 +1,4 @@
-// src/app/reservation-salle/page.tsx (VERSION STYLÉE)
+// src/app/reservation-salle/page.tsx
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -8,21 +8,36 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { useAuth } from '@/contexts/AuthContext';
-import { useReservations } from '@/hooks/useReservations';
+import { useAuth } from '@/hooks/useAuth';
+import { useCreateReservation } from '@/hooks/useReservations';
+import { useSalles } from '@/hooks/useSalles';
 import { useToast } from '@/hooks/useToast';
 import { salles, creneauxHoraires } from '@/lib/data';
-import { ReservationSalleData } from '@/types';
+import { CreateReservationRequest } from '@/types';
+
+interface ReservationSalleData {
+  salleCode: string;
+  date: Date;
+  heureDebut: string;
+  heureFin: string;
+  motif: string;
+  nombreParticipants: number;
+  commentaire?: string;
+}
 
 export default function ReservationSallePage() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const { user, isAuthenticated } = useAuth();
-  const { createSalleReservation, isLoading, checkSalleDisponibilite } = useReservations();
-  const { warning } = useToast();
+  const { data: sallesAPI = [] } = useSalles();
+  const createReservationMutation = useCreateReservation();
+  const { warning, success, error } = useToast();
+
+  // Utiliser les salles de l'API ou les données mockées
+  const sallesF = sallesAPI.length > 0 ? sallesAPI : salles;
 
   const [formData, setFormData] = useState<Partial<ReservationSalleData>>({
     date: new Date(),
-    recurrence: { type: 'AUCUNE' }
+    nombreParticipants: 1
   });
 
   const [filtres, setFiltres] = useState({
@@ -41,42 +56,64 @@ export default function ReservationSallePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.salleId || !formData.creneauId || !formData.date || !formData.motif) {
+    if (!formData.salleCode || !formData.heureDebut || !formData.heureFin || !formData.date || !formData.motif) {
       warning('Attention', 'Veuillez remplir tous les champs obligatoires');
       return;
     }
 
-    // Vérifier la disponibilité
-    if (!checkSalleDisponibilite(formData.salleId, formData.creneauId, formData.date)) {
-      warning('Attention', 'Cette salle est déjà réservée pour ce créneau');
+    if (!user) {
+      error('Erreur', 'Utilisateur non connecté');
       return;
     }
 
-    const success = await createSalleReservation(formData as ReservationSalleData);
-    
-    if (success) {
+    // Vérifier que l'heure de fin est après l'heure de début
+    if (formData.heureDebut >= formData.heureFin) {
+      warning('Attention', 'L\'heure de fin doit être postérieure à l\'heure de début');
+      return;
+    }
+
+    try {
+      const reservationData: CreateReservationRequest = {
+        jour: formData.date.toISOString().split('T')[0],
+        heureDebut: formData.heureDebut,
+        heureFin: formData.heureFin,
+        motif: formData.motif,
+        nombreParticipants: formData.nombreParticipants || 1,
+        enseignantId: user.idEnseignant,
+        salleCode: formData.salleCode
+      };
+
+      await createReservationMutation.mutateAsync(reservationData);
+      
+      // Réinitialiser le formulaire
       setFormData({
         date: new Date(),
-        recurrence: { type: 'AUCUNE' }
+        nombreParticipants: 1
       });
+      
+      success('Succès', 'Réservation créée avec succès !');
+    } catch (err: any) {
+      error('Erreur', err.message || 'Erreur lors de la création de la réservation');
     }
   };
 
-  const sallesFiltrees = salles.filter(salle => {
+  const sallesFiltrees = sallesF.filter(salle => {
     if (filtres.capaciteMin && salle.capacite < parseInt(filtres.capaciteMin)) return false;
-    if (filtres.type && salle.type !== filtres.type) return false;
-    if (filtres.equipement && !salle.equipements.some(eq => 
-      eq.toLowerCase().includes(filtres.equipement.toLowerCase())
-    )) return false;
+    if (filtres.type && salle.typeSalle !== filtres.type) return false;
+    if (filtres.equipement && !salle.equipements.toLowerCase().includes(filtres.equipement.toLowerCase())) return false;
     return true;
   });
 
-  const creneauxDuJour = formData.date ? 
-    creneauxHoraires.filter(c => {
-      const dayNames = ['DIMANCHE', 'LUNDI', 'MARDI', 'MERCREDI', 'JEUDI', 'VENDREDI', 'SAMEDI'];
-      const selectedDay = dayNames[formData.date!.getDay()];
-      return c.jour === selectedDay;
-    }) : [];
+  const generateTimeOptions = () => {
+    const options = [];
+    for (let hour = 8; hour <= 18; hour++) {
+      for (let minute = 0; minute < 60; minute += 30) {
+        const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+        options.push({ value: timeString, label: timeString });
+      }
+    }
+    return options;
+  };
 
   if (!isAuthenticated) {
     return (
@@ -159,9 +196,9 @@ export default function ReservationSallePage() {
                       options={[
                         { value: '', label: 'Tous les types' },
                         { value: 'Amphithéâtre', label: '🎭 Amphithéâtre' },
-                        { value: 'TD', label: '📚 Salle de TD' },
-                        { value: 'Laboratoire', label: '🧪 Laboratoire' },
-                        { value: 'Visioconférence', label: '📹 Visioconférence' }
+                        { value: 'Salle TP', label: '💻 Salle TP' },
+                        { value: 'Salle de cours', label: '📚 Salle de cours' },
+                        { value: 'Laboratoire', label: '🧪 Laboratoire' }
                       ]}
                     />
                     <Input
@@ -185,17 +222,17 @@ export default function ReservationSallePage() {
                 >
                   <Select
                     label="Salle disponible *"
-                    value={formData.salleId || ''}
+                    value={formData.salleCode || ''}
                     onChange={(e) => setFormData(prev => ({
                       ...prev, 
-                      salleId: e.target.value
+                      salleCode: e.target.value
                     }))}
                     className="border-green-200 focus:border-green-500 focus:ring-green-200"
                     options={[
                       { value: '', label: 'Sélectionner une salle...' },
                       ...sallesFiltrees.map(salle => ({
-                        value: salle.id,
-                        label: `${salle.nom} (${salle.capacite} places) - ${salle.type}`
+                        value: salle.codeSalle,
+                        label: `${salle.nomSalle} (${salle.capacite} places) - ${salle.typeSalle}`
                       }))
                     ]}
                   />
@@ -215,7 +252,7 @@ export default function ReservationSallePage() {
                   rounded="2xl"
                   className="border-l-4 border-l-purple-500 bg-gradient-to-r from-purple-50 to-pink-50"
                 >
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <Input
                       label="Date de réservation *"
                       type="date"
@@ -225,33 +262,37 @@ export default function ReservationSallePage() {
                         date: new Date(e.target.value)
                       }))}
                       className="border-purple-200 focus:border-purple-500 focus:ring-purple-200"
+                      min={new Date().toISOString().split('T')[0]}
                     />
                     
                     <Select
-                      label="Créneau horaire *"
-                      value={formData.creneauId || ''}
+                      label="Heure de début *"
+                      value={formData.heureDebut || ''}
                       onChange={(e) => setFormData(prev => ({
                         ...prev, 
-                        creneauId: e.target.value
+                        heureDebut: e.target.value
                       }))}
                       className="border-purple-200 focus:border-purple-500 focus:ring-purple-200"
                       options={[
-                        { value: '', label: 'Sélectionner un créneau...' },
-                        ...creneauxDuJour.map(creneau => ({
-                          value: creneau.id,
-                          label: `⏰ ${creneau.heureDebut} - ${creneau.heureFin}`
-                        }))
+                        { value: '', label: 'Heure de début...' },
+                        ...generateTimeOptions()
+                      ]}
+                    />
+
+                    <Select
+                      label="Heure de fin *"
+                      value={formData.heureFin || ''}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev, 
+                        heureFin: e.target.value
+                      }))}
+                      className="border-purple-200 focus:border-purple-500 focus:ring-purple-200"
+                      options={[
+                        { value: '', label: 'Heure de fin...' },
+                        ...generateTimeOptions()
                       ]}
                     />
                   </div>
-                  
-                  {creneauxDuJour.length === 0 && formData.date && (
-                    <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-2xl">
-                      <p className="text-blue-700 text-sm">
-                        ℹ️ Aucun créneau disponible pour cette date
-                      </p>
-                    </div>
-                  )}
                 </Card>
 
                 {/* Section Détails */}
@@ -261,16 +302,31 @@ export default function ReservationSallePage() {
                   className="border-l-4 border-l-orange-500 bg-gradient-to-r from-orange-50 to-yellow-50"
                 >
                   <div className="space-y-6">
-                    <Input
-                      label="Motif de la réservation *"
-                      value={formData.motif || ''}
-                      onChange={(e) => setFormData(prev => ({
-                        ...prev, 
-                        motif: e.target.value
-                      }))}
-                      placeholder="Ex: Cours de Mathématiques, Réunion équipe..."
-                      className="border-orange-200 focus:border-orange-500 focus:ring-orange-200"
-                    />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <Input
+                        label="Motif de la réservation *"
+                        value={formData.motif || ''}
+                        onChange={(e) => setFormData(prev => ({
+                          ...prev, 
+                          motif: e.target.value
+                        }))}
+                        placeholder="Ex: Cours de Mathématiques, Réunion équipe..."
+                        className="border-orange-200 focus:border-orange-500 focus:ring-orange-200"
+                      />
+
+                      <Input
+                        label="Nombre de participants *"
+                        type="number"
+                        min="1"
+                        value={formData.nombreParticipants || ''}
+                        onChange={(e) => setFormData(prev => ({
+                          ...prev, 
+                          nombreParticipants: parseInt(e.target.value) || 1
+                        }))}
+                        placeholder="Ex: 25"
+                        className="border-orange-200 focus:border-orange-500 focus:ring-orange-200"
+                      />
+                    </div>
 
                     <div>
                       <label className="form-label">Commentaire (optionnel)</label>
@@ -288,79 +344,16 @@ export default function ReservationSallePage() {
                   </div>
                 </Card>
 
-                {/* Section Récurrence */}
-                <Card 
-                  title="🔄 Options de récurrence" 
-                  rounded="2xl"
-                  className="border-l-4 border-l-indigo-500 bg-gradient-to-r from-indigo-50 to-blue-50"
-                >
-                  <div className="space-y-6">
-                    <Select
-                      label="Type de récurrence"
-                      value={formData.recurrence?.type || 'AUCUNE'}
-                      onChange={(e) => setFormData(prev => ({
-                        ...prev, 
-                        recurrence: { 
-                          ...prev.recurrence,
-                          type: e.target.value as any
-                        }
-                      }))}
-                      className="border-indigo-200 focus:border-indigo-500 focus:ring-indigo-200"
-                      options={[
-                        { value: 'AUCUNE', label: '🚫 Aucune récurrence' },
-                        { value: 'HEBDOMADAIRE', label: '📆 Chaque semaine' },
-                        { value: 'MENSUELLE', label: '📅 Chaque mois' }
-                      ]}
-                    />
-
-                    {formData.recurrence?.type !== 'AUCUNE' && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-white bg-opacity-60 rounded-2xl border border-indigo-200">
-                        <Input
-                          label="Nombre d'occurrences"
-                          type="number"
-                          min="1"
-                          max="20"
-                          value={formData.recurrence?.nbOccurrences || ''}
-                          onChange={(e) => setFormData(prev => ({
-                            ...prev, 
-                            recurrence: {
-                              ...prev.recurrence!,
-                              nbOccurrences: parseInt(e.target.value)
-                            }
-                          }))}
-                          placeholder="Ex: 10"
-                          className="border-indigo-200 focus:border-indigo-500 focus:ring-indigo-200"
-                        />
-                        
-                        <Input
-                          label="Fin de récurrence"
-                          type="date"
-                          value={formData.recurrence?.finRecurrence ? 
-                            formData.recurrence.finRecurrence.toISOString().split('T')[0] : ''}
-                          onChange={(e) => setFormData(prev => ({
-                            ...prev, 
-                            recurrence: {
-                              ...prev.recurrence!,
-                              finRecurrence: new Date(e.target.value)
-                            }
-                          }))}
-                          className="border-indigo-200 focus:border-indigo-500 focus:ring-indigo-200"
-                        />
-                      </div>
-                    )}
-                  </div>
-                </Card>
-
                 {/* Bouton de soumission */}
                 <div className="flex justify-center pt-4">
                   <Button 
                     type="submit" 
                     onClick={handleSubmit}
-                    isLoading={isLoading}
+                    isLoading={createReservationMutation.isPending}
                     size="lg"
                     className="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 hover:from-blue-700 hover:via-purple-700 hover:to-indigo-700 text-white px-12 py-4 text-lg font-semibold shadow-xl hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300"
                   >
-                    {isLoading ? (
+                    {createReservationMutation.isPending ? (
                       <>🔄 Traitement en cours...</>
                     ) : (
                       <>✨ Confirmer la réservation</>
@@ -371,7 +364,7 @@ export default function ReservationSallePage() {
 
               {/* Panneau d'information de la salle */}
               <div className="space-y-6">
-                {formData.salleId ? (
+                {formData.salleCode ? (
                   <Card 
                     title="🏛️ Détails de la salle" 
                     rounded="2xl"
@@ -379,21 +372,21 @@ export default function ReservationSallePage() {
                     hover
                   >
                     {(() => {
-                      const salle = salles.find(s => s.id === formData.salleId);
+                      const salle = salles.find(s => s.codeSalle === formData.salleCode);
                       if (!salle) return null;
 
                       return (
                         <div className="space-y-6">
                           {/* Info principale */}
                           <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl p-4 text-white">
-                            <h4 className="font-bold text-lg">{salle.nom}</h4>
+                            <h4 className="font-bold text-lg">{salle.nomSalle}</h4>
                             <div className="flex items-center space-x-4 mt-2 text-blue-100">
-                              <span>🏢 {salle.type}</span>
+                              <span>🏢 {salle.typeSalle}</span>
                               <span>👥 {salle.capacite} places</span>
                             </div>
                             <div className="flex items-center space-x-4 mt-1 text-blue-100">
-                              <span>🏗️ Bâtiment {salle.batiment}</span>
-                              <span>📊 Étage {salle.etage}</span>
+                              <span>🏗️ {salle.batiment}</span>
+                              <span>📊 {salle.etage}</span>
                             </div>
                           </div>
                           
@@ -403,9 +396,9 @@ export default function ReservationSallePage() {
                               ⚙️ Équipements disponibles
                             </h5>
                             <div className="grid grid-cols-1 gap-2">
-                              {salle.equipements.map(eq => (
+                              {salle.equipements.split(', ').map((eq, index) => (
                                 <div 
-                                  key={eq}
+                                  key={index}
                                   className="flex items-center space-x-2 p-2 bg-green-50 border border-green-200 rounded-xl"
                                 >
                                   <span className="text-green-600">✅</span>
@@ -415,34 +408,29 @@ export default function ReservationSallePage() {
                             </div>
                           </div>
 
-                          {/* Disponibilité */}
-                          {formData.creneauId && formData.date && (
+                          {/* Validation capacité */}
+                          {formData.nombreParticipants && (
                             <div>
                               <h5 className="font-semibold text-gray-800 mb-3 flex items-center">
-                                📊 Statut de disponibilité
+                                📊 Validation de capacité
                               </h5>
                               <div className={`p-4 rounded-2xl border-2 ${
-                                checkSalleDisponibilite(formData.salleId, formData.creneauId, formData.date)
+                                formData.nombreParticipants <= salle.capacite
                                   ? 'bg-green-50 border-green-300 text-green-800'
                                   : 'bg-red-50 border-red-300 text-red-800'
                               }`}>
                                 <div className="flex items-center space-x-3">
                                   <span className="text-2xl">
-                                    {checkSalleDisponibilite(formData.salleId, formData.creneauId, formData.date)
-                                      ? '✅' : '❌'
-                                    }
+                                    {formData.nombreParticipants <= salle.capacite ? '✅' : '⚠️'}
                                   </span>
                                   <div>
                                     <div className="font-semibold">
-                                      {checkSalleDisponibilite(formData.salleId, formData.creneauId, formData.date)
-                                        ? 'Salle disponible'
-                                        : 'Salle déjà réservée'
-                                      }
+                                      {formData.nombreParticipants} / {salle.capacite} participants
                                     </div>
                                     <div className="text-sm opacity-80">
-                                      {checkSalleDisponibilite(formData.salleId, formData.creneauId, formData.date)
-                                        ? 'Vous pouvez procéder à la réservation'
-                                        : 'Choisissez un autre créneau'
+                                      {formData.nombreParticipants <= salle.capacite
+                                        ? 'Capacité suffisante'
+                                        : 'Capacité dépassée'
                                       }
                                     </div>
                                   </div>
@@ -479,7 +467,7 @@ export default function ReservationSallePage() {
                         <span className="text-yellow-600 text-lg">3️⃣</span>
                         <div>
                           <div className="font-medium text-yellow-800">Définissez les horaires</div>
-                          <div className="text-yellow-600">Sélectionnez la date et le créneau</div>
+                          <div className="text-yellow-600">Sélectionnez la date et les créneaux</div>
                         </div>
                       </div>
                       <div className="flex items-start space-x-3">

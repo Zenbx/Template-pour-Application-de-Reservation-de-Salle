@@ -1,107 +1,113 @@
-import axios, { AxiosInstance, AxiosResponse } from 'axios';
-import { ApiResponse } from '@/types';
+// lib/api/client.ts
+import { ApiError, ApiResponse } from '@/types';
 
-const demoUsers: Record<string, { password: string; role: string }> = {
-  'responsable@univ.fr': { password: 'password123', role: 'responsable' },
-  'enseignant@univ.fr': { password: 'password123', role: 'enseignant' },
-};
-
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://resama.onrender.com/api';
 
 class ApiClient {
-  private client: AxiosInstance;
+  private baseURL: string;
 
-  constructor() {
-    this.client = axios.create({
-      baseURL: process.env.NEXT_PUBLIC_API_URL || 'https://resama.onrender.com/api',
-      timeout: 10000,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+  constructor(baseURL: string) {
+    this.baseURL = baseURL;
+  }
+
+  private getAuthHeaders(): Record<string, string> {
+    const token = localStorage.getItem('authToken');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    
+    return headers;
+  }
+
+  private async handleResponse<T>(response: Response): Promise<T> {
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({
+        message: 'Une erreur est survenue',
+        status: response.status
+      }));
+      
+      throw new ApiError(
+        errorData.message || `Erreur ${response.status}`,
+        response.status,
+        errorData.code,
+        errorData.details
+      );
+    }
+
+    const data = await response.json();
+    return data;
+  }
+
+  async get<T>(endpoint: string, params?: Record<string, any>): Promise<T> {
+    const url = new URL(`${this.baseURL}${endpoint}`);
+    
+    if (params) {
+      Object.keys(params).forEach(key => {
+        if (params[key] !== undefined && params[key] !== null) {
+          url.searchParams.append(key, String(params[key]));
+        }
+      });
+    }
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: this.getAuthHeaders(),
     });
 
-    this.setupInterceptors();
+    return this.handleResponse<T>(response);
   }
 
-  private setupInterceptors() {
-    // Intercepteur pour ajouter le token
-    this.client.interceptors.request.use(
-      (config) => {
-        const token = this.getToken();
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        }
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
+  async post<T>(endpoint: string, data: any): Promise<T> {
+    const response = await fetch(`${this.baseURL}${endpoint}`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
 
-    // Intercepteur pour gérer les erreurs globales
-    this.client.interceptors.response.use(
-      (response: AxiosResponse) => response,
-      (error) => {
-        if (error.response?.status === 401) {
-          console.warn("Erreur 401 - utilisateur non autorisé");
-          this.handleUnauthorized();
-        }
-        return Promise.reject(error);
-      }
-    );
+    return this.handleResponse<T>(response);
   }
 
-  private getToken(): string | null {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('authToken');
-    }
-    return null;
+  async put<T>(endpoint: string, data: any): Promise<T> {
+    const response = await fetch(`${this.baseURL}${endpoint}`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+
+    return this.handleResponse<T>(response);
   }
 
-  private handleUnauthorized() {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('authToken');
-      window.location.href = '/login';
-    }
+  async patch<T>(endpoint: string, data: any): Promise<T> {
+    const response = await fetch(`${this.baseURL}${endpoint}`, {
+      method: 'PATCH',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+
+    return this.handleResponse<T>(response);
   }
 
-  // ---------- Ajout: Connexion via comptes de démo ----------
+  async delete<T>(endpoint: string): Promise<T> {
+    const response = await fetch(`${this.baseURL}${endpoint}`, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders(),
+    });
 
-  public async loginWithDemo(email: string, password: string): Promise<{ success: boolean; user?: any }> {
-    const demo = demoUsers[email.trim()];
-    if (demo && demo.password === password) {
-      const user = { email, role: demo.role };
-      localStorage.setItem('authToken', 'demo-token'); // Fake token
-      localStorage.setItem('user', JSON.stringify(user));
-      return { success: true, user };
-    } else {
-      return { success: false };
-    }
-  }
-
-  // ---------- Méthodes HTTP génériques ----------
-
-  async get<T>(url: string, params?: any): Promise<T> {
-    const response = await this.client.get(url, { params });
-    return response.data;
-  }
-
-  async post<T>(url: string, data?: any): Promise<T> {
-    const response = await this.client.post(url, data);
-    return response.data;
-  }
-
-  async put<T>(url: string, data?: any): Promise<T> {
-    const response = await this.client.put(url, data);
-    return response.data;
-  }
-
-  async delete<T>(url: string): Promise<T> {
-    const response = await this.client.delete(url);
-    return response.data;
-  }
-
-  async patch<T>(url: string, data?: any): Promise<T> {
-    const response = await this.client.patch(url, data);
-    return response.data;
+    return this.handleResponse<T>(response);
   }
 }
 
-export const apiClient = new ApiClient();
+// Instance globale du client API
+export const apiClient = new ApiClient(API_BASE_URL);
+
+// Export des services pour une utilisation directe
+export * from './services/enseignants';
+export * from './services/formations';
+export * from './services/reservations';
+export * from './services/salles';
+export * from './services/materiel';
+export * from './services/dashboard';

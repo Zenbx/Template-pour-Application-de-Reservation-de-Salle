@@ -1,10 +1,10 @@
 // src/lib/data.ts
-import { Salle, Materiel, Semaine, CreneauHoraire, Reservation, UserRole } from '@/types';
+import { SalleDTO, Materiel, Semaine, CreneauHoraire, Reservation, UserRole } from '@/types';
 import { addWeeks, startOfWeek, endOfWeek, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 // Données des salles
-export const salles: Salle[] = [
+export const salles: SalleDTO[] = [
   {
     id: 'S001',
     nom: 'Amphithéâtre A',

@@ -411,3 +411,18 @@ export interface SearchResponse<T> extends PaginatedResponse<T> {
   query: string;
   filters?: Record<string, any>;
 }
+
+export interface CreneauHoraire {
+  id: string;
+  jour: 'LUNDI' | 'MARDI' | 'MERCREDI' | 'JEUDI' | 'VENDREDI';
+  heureDebut: string;
+  heureFin: string;
+  label: string;
+}
+
+export interface Semaine {
+  numero: number;
+  debut: Date;
+  fin: Date;
+  label: string;
+}
